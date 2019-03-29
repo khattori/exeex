@@ -1,0 +1,1 @@
+<%= include "cyclic_error2.txt" do %>in cyclic error 1<% end %>

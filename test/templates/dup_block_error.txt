@@ -1,0 +1,5 @@
+Cannot override blocks of the same name in a single include clause
+<%= include "main.txt" do %>
+<%= block "header" do %>First override<% end %>
+<%= block "header" do %>Second override (Error!)<% end %>
+<% end %>

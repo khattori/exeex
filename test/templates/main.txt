@@ -1,0 +1,3 @@
+<%= block "header" do %><%= include "header.txt" %><% end %>---
+<%= block "body" do %><%= include "body.txt" %><% end %>---
+<%= block "footer" do %><%= include "footer.txt" %><% end %>

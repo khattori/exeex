@@ -1,0 +1,4 @@
+<%= include "main.txt" do %>
+<% block "body" do %>Body overrided by sub2:
+{<%= include "main.txt" %>}<% end %>
+<% end %>

@@ -1,0 +1,2 @@
+<%= include "block1.txt" %>
+<%= include "block2.txt" %>

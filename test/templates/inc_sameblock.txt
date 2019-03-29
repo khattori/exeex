@@ -1,0 +1,3 @@
+<%= include "same_block.txt" do %>
+<% block "test" do %>This is override <% end %>
+<% end %>

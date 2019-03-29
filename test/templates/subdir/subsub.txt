@@ -1,0 +1,3 @@
+<%= include "../sub.txt" do %>
+<% block "footer" do %>Footer overrided by subsub<% end %>
+<% end %>
