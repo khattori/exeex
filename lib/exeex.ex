@@ -13,6 +13,10 @@ defmodule ExEEx do
 
       iex> ExEEx.render("test/templates/main.txt")
       "This is header\\n---\\nThis is body\\n---\\nThis is footer\\n\\n"
+
+      iex> ExEEx.render("test/templates/main.txt", [{"foo", 3}])
+      ** (ExEEx.TemplateError) expected keywords as template parameters
+
   """
   def render(filename, params \\ [])
   def render(%ExEEx.Template{code: code}, params) when is_list(params) do
@@ -41,6 +45,9 @@ defmodule ExEEx do
 
       iex> ExEEx.render_string("<%= block \\"header\\" do %>This is default header<% end %>")
       "This is default header"
+
+      iex> ExEEx.render_string("<%= block \\"test\\" %>")
+      ""
   """
   def render_string(template, params \\ []) when is_list(params) do
     compile_string(template)
