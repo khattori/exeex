@@ -14,6 +14,20 @@ This is footer
 """
   end
 
+  test "override inherited template in block" do
+    assert ExEEx.render("test/templates/main_sub_sub.txt") == """
+Header overrided by main_sub
+---
+Body overrided by main_sub
+Sub body@main_sub_sub.txt
+---
+This is footer
+
+
+
+"""
+  end
+
   test "include in include body" do
     assert ExEEx.render("test/templates/sub2.txt") == """
 This is header

@@ -58,6 +58,7 @@ defmodule ExEEx.Engine do
              #
              defblocks = pop(:defblocks)
              update_peek(:defblocks, defblocks ++ peek(:defblocks))
+             defblocks = peek(:defblocks)
              blocks = pop(:blocks)
              for block <- Map.keys(blocks) do
                if block not in defblocks do

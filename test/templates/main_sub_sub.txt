@@ -1,0 +1,3 @@
+<%= include "main_sub.txt" do %>
+<%= block "body_sub" do %>Sub body@main_sub_sub.txt<% end %>
+<% end %>
