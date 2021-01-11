@@ -1,4 +1,31 @@
 defmodule ExEEx.Engine do
+  def do_block(name, block \\ nil) do
+    defblocks = peek(:defblocks)
+    update_peek(:defblocks, [name | defblocks])
+    #
+    # [NOTE]
+    # ブロック辞書は、S: include A -> A: include B ->  B: include C -> C
+    # というインクルードチェインの場合、[C, B, A, S]という並びでblocksスタックに積まれる
+    # スタックの先頭から辞書をマージしていくことで、ブロックの検索順序は逆順のS, A, B, Cとなる
+    #
+    Process.get(:blocks)
+    |> Enum.map(fn block_map -> Map.get(block_map,  name) end)
+    |> Enum.reduce(block, &replace_super/2)
+  end
+
+  #
+  # blockにsuperがあれば置き換えてsuper_blockで差し替える
+  #
+  defp replace_super(nil, super_block), do: super_block
+  defp replace_super(block, super_block) do
+    Macro.postwalk(block,
+      fn
+        {:super, _, _} -> super_block
+        ast -> ast
+      end
+    )
+  end
+
   def do_include(name, block_map \\ %{})
   def do_include(name, block_map) when is_binary(name) do
     adapter = Application.get_env(:exeex, :adapter, ExEEx.Adapter.FileStorage)
@@ -32,8 +59,9 @@ defmodule ExEEx.Engine do
   end
   def do_include(_name, _map), do: raise ExEEx.TemplateError, message: "include parameter should be a string literal"
 
-  def expand_macro([do: block]), do: [do: expand_macro(block)]
-  def expand_macro(block) do
+  def expand_macro(block, check_super \\ true)
+  def expand_macro([do: block], check_super), do: [do: expand_macro(block, check_super)]
+  def expand_macro(block, check_super) do
     block
     |> Macro.traverse(nil,
          fn
@@ -73,6 +101,9 @@ defmodule ExEEx.Engine do
              # include のマーカーを削除
              #
              {body, acc}
+           {:super, [line: line], _}, _acc when check_super ->
+             {_dir, file_name} = peek(:includes)
+             raise ExEEx.TemplateError, message: "super directive must be in an include block: #{file_name}:#{inspect line}"
            block, acc -> {block, acc}
          end
        )
@@ -89,7 +120,6 @@ defmodule ExEEx.Engine do
   end
 
   defp make_env() do
-    require ExEEx.Macro
     import ExEEx.Macro, only: [block: 1, block: 2, include: 1, include: 2]
     __ENV__
   end
@@ -110,10 +140,5 @@ defmodule ExEEx.Engine do
 
   def update_peek(key, val) do
     Process.put(key, [val | Process.get(key) |> tl()])
-  end
-
-  def block_map() do
-    Process.get(:blocks)
-    |> Enum.reduce(fn m, acc -> Map.merge(acc, m) end)
   end
 end

@@ -1,14 +1,20 @@
 # ExEEx
+
  An Elixir template engine extended to include and inherit templates
+
 
 # Usage
 
       iex> ExEEx.render_string("foo <%= bar %>", bar: "baz")
       "foo baz"
 
+      iex> ExEEx.render("template_file.eex", bar: "baz")
+      "foo baz"
+
+
 ## Include directive
 
-Include directive to include another template file.
+The include directive is used to include another template file.
 
 main.eex:
 
@@ -59,3 +65,23 @@ The rendering output of subsub.eex is as follows:
 
       Hello World
       In sub(In subsub)
+
+## Super directive
+
+The super directive is used to refer to an included template block.
+
+super.eex:
+
+      Hello world
+      <%= block "body" do %>In super<% end %>
+
+sub.eex:
+
+      <%= include "super.eex" do %>
+      <%= block "body" do %><%= super %>(In sub)<% end %>
+      <% end>
+
+The rendering output of sub.eex is as follows:
+
+      Hello World
+      In super(In sub)

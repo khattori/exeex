@@ -104,13 +104,23 @@ This is overrided block
 """
   end
 
-  test "mix include template " do
+  test "mix include template" do
     assert ExEEx.render_string("<%= include \"test/templates/mix.txt\" do %><% block \"block2\" do %>This is Block2<% end %><% block \"block1\" do %>This is Block1<% end %><% end %>") == """
 This is Block1
 
 This is Block2
 
 """
+  end
+
+  test "super directive" do
+    assert ExEEx.render_string(~s'<%= include "test/templates/super.txt" do %><%= block "body" do %><%= super %>(In sub)<% end %><% end %>') == "Hello world\nIn super(In sub)\n"
+  end
+
+  test "super directive error" do
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.compile_string("<%= super %>")
+    end
   end
 
   test "undefined block error" do
