@@ -162,4 +162,39 @@ This is Block2
       ExEEx.compile("test/templates/dup_block_error.txt")
     end
   end
+
+  test "macro expand" do
+    assert ExEEx.render("test/templates/macro.txt", assigns: [ext_var: "EXT_VAR"]) == """
+
+
+
+
+NO ARGS MACRO
+NO ARGS MACRO2
+MACRO(EXT_VAR) ARG, ARG
+MACRO2 FOO, DEFAULT
+MACRO2 FOO, BAR
+"""
+  end
+
+  test "macro arg error" do
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.compile_string("<% def @macro(arg, arg) do %><% end %>")
+    end
+  end
+
+  test "duplicate macro definition error" do
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.render_string("<% def @foo do %>BAR<% end %><% def @foo do %>FOO<% end %><%= @foo() %>")
+    end
+  end
+
+  test "undefined macro error" do
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.compile_string("<%= def @macro() do %><% end %><%= @macro(val) %>")
+    end
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.compile_string("<%= @undef_macro() %>")
+    end
+  end
 end
