@@ -1,6 +1,7 @@
 # ExEEx
 
- An Elixir template engine extended to include and inherit templates
+ExEEx is an Elixir template engine with macro and template import and
+inheritance capabilities.
 
 
 # Usage
@@ -43,7 +44,7 @@ sub.eex:
 
       <%= include "super.eex" do %>
       <%= block "body" do %>In sub<%= block "subbody" %><% end %>
-      <% end>
+      <% end %>
 
 subsub.eex:
 
@@ -79,9 +80,21 @@ sub.eex:
 
       <%= include "super.eex" do %>
       <%= block "body" do %><%= super %>(In sub)<% end %>
-      <% end>
+      <% end %>
 
 The rendering output of sub.eex is as follows:
 
       Hello World
       In super(In sub)
+
+## Macro directive
+
+The macro directive defines a macro.
+
+    <% def @checkbox_input(name, checked, disabled) do %>
+    <input type="checkbox" name="<%= @name %>" id="id_<%= @name %>" <%= if @checked do %>checked<% end %> <%= if @disabled do %>disabled<% end %>>
+    <% end %>
+
+Using macros:
+
+    <%= @input("checkbox", true, true) %>

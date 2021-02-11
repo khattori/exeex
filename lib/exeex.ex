@@ -97,8 +97,12 @@ defmodule ExEEx do
     Process.put(:includes, [{dir, name}])
     Process.put(:blocks, [%{}])
     Process.put(:defblocks, [[]])
+    opts =
+      opts
+      |> Keyword.put(:file, to_string(name))
+      |> Keyword.put(:engine, ExEEx.Engine)
     code =
-      EEx.compile_string(source, Keyword.put(opts, :file, to_string(name)))
+      EEx.compile_string(source, opts)
       |> ExEEx.Engine.expand_macro()
     Process.delete(:defblocks)
     Process.delete(:blocks)
