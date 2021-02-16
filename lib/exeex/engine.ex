@@ -1,159 +1,79 @@
 defmodule ExEEx.Engine do
   use EEx.Engine
 
-  def do_block(name, block \\ nil) do
-    defblocks = peek(:defblocks)
-    update_peek(:defblocks, [name | defblocks])
-    #
-    # [NOTE]
-    # ブロック辞書は、S: include A -> A: include B ->  B: include C -> C
-    # というインクルードチェインの場合、[C, B, A, S]という並びでblocksスタックに積まれる
-    # スタックの先頭から辞書をマージしていくことで、ブロックの検索順序は逆順のS, A, B, Cとなる
-    #
-    Process.get(:blocks)
-    |> Enum.map(fn block_map -> Map.get(block_map,  name) end)
-    |> Enum.reduce(block, &replace_super/2)
-  end
+  defmodule BlockStack do
+    @key :exeex_block_stack
 
-  #
-  # blockにsuperがあれば置き換えてsuper_blockで差し替える
-  #
-  defp replace_super(nil, super_block), do: super_block
-  defp replace_super(block, super_block) do
-    Macro.postwalk(block,
-      fn
-        {:super, _, _} -> super_block
-        ast -> ast
-      end
-    )
-  end
-
-  def do_include(name, block_map \\ %{})
-  def do_include(name, block_map) when is_binary(name) do
-    adapter = Application.get_env(:exeex, :adapter, ExEEx.Adapter.FileStorage)
-    include_stack = Process.get(:includes)
-    #
-    # includeするファイルの絶対パスを取得
-    #
-    file_path =
-      include_stack
-      |> hd()
-      |> elem(0)
-      |> Path.join(name)        # dir/name を作成
-      |> adapter.expand_path()  # 絶対パスに変換
-    {dir, name} = {Path.dirname(file_path), Path.basename(file_path)}
-    if {dir, name} in include_stack do
-      raise ExEEx.TemplateError, message: "detected cyclic include: #{dir}/#{name}"
+    def init() do
+      Process.put(@key, [MapSet.new()])
     end
-    #
-    # includeスタックに ファイルパスをプッシュ
-    #
-    push(:includes, {dir, name})
-    push(:blocks, block_map)
-    push(:defblocks, [])
-    #
-    # テンプレートの読み込みとコンパイル
-    #
-    file_path
-    |> adapter.read()
-    |> EEx.compile_string()
-    |> mk_guard()
-  end
-  def do_include(_name, _map), do: raise ExEEx.TemplateError, message: "include parameter should be a string literal"
 
-  def expand_macro(block, check_super \\ true)
-  def expand_macro([do: block], check_super), do: [do: expand_macro(block, check_super)]
-  def expand_macro(block, check_super) do
-    block
-    |> Macro.traverse(nil,
-         fn
-           {:include, _, _} = body, acc ->
-             #
-             # include のマーカーを挿入
-             #
-             {{:__enter__, [], [Macro.expand(body, make_env())]}, acc}
-           block, acc ->
-             {Macro.expand(block, make_env()), acc}
-         end,
-         fn
-           {:__enter__, _, [body]}, acc ->
-             #
-             # block定義をチェック
-             #
-             # ---+---> block A, B
-             #    |
-             #    +---> block C, D, E
-             #
-             # ---> block A, B, C, D, E にマージされる
-             #
-             defblocks = pop(:defblocks)
-             update_peek(:defblocks, defblocks ++ peek(:defblocks))
-             defblocks = peek(:defblocks)
-             blocks = pop(:blocks)
-             for block <- Map.keys(blocks) do
-               if block not in defblocks do
-                 raise ExEEx.TemplateError, message: "block \"#{block}\" is not found"
-               end
-             end
-             #
-             # includeスタックから要素をポップ
-             #
-             pop(:includes)
-             #
-             # include のマーカーを削除
-             #
-             {body, acc}
-           {:super, [line: line], _}, _acc when check_super ->
-             {_dir, file_name} = peek(:includes)
-             raise ExEEx.TemplateError, message: "super directive must be in an include block: #{file_name}:#{inspect line}"
-           block, acc -> {block, acc}
-         end
-       )
-    |> elem(0)
-    |> mk_guard()
+    def push() do
+      Process.put(@key, [MapSet.new() | Process.get(@key)])
+    end
+
+    def merge_and_pop() do
+      [fst, snd | tail] = Process.get(@key)
+      Process.put(@key, [MapSet.union(fst, snd) | tail])
+    end
+
+    def add(names) when is_list(names), do: add(MapSet.new(names))
+    def add(%MapSet{} = names) do
+      [head | tail] = Process.get(@key)
+      Process.put(@key, [MapSet.union(names, head) | tail])
+    end
+
+    def check(block_params) do
+      [head | _tail] = Process.get(@key)
+      for {name, %{file: file, line: line}} <- block_params do
+        if not MapSet.member?(head, name) do
+          raise ExEEx.TemplateError, message: "undefined block name: #{name}: #{file}:#{line}"
+        end
+      end
+    end
   end
 
-  defp mk_guard(block) do
-    #
-    # 変数の衝突を防ぐために、関数でガードしてローカルスコープにする
-    # (fn -> <BLOCK> end).()
-    #
-    {{:., [], [{:fn, [], [{:->, [], [[], block]}]}]}, [], []}
-  end
-
-  defp make_env() do
-    import ExEEx.Macro, only: [block: 1, block: 2, include: 1, include: 2]
-    __ENV__
-  end
-
-  defp push(key, val) do
-    Process.put(key, [val | Process.get(key)])
-  end
-
-  defp pop(key) do
-    [head | tail] = Process.get(key)
-    Process.put(key, tail)
-    head
-  end
-
-  def peek(key) do
-    Process.get(key) |> hd()
-  end
-
-  def update_peek(key, val) do
-    Process.put(key, [val | Process.get(key) |> tl()])
-  end
-
-  def handle_expr(state, mark, ast) do
-    {ast, state} = Macro.prewalk(ast, state, &handle_macro/2)
-    super(state, mark, ast)
-  end
 
   def init(opts) do
     super(opts)
     |> Map.put(:macros, %{})
+    |> Map.put(:includes, Keyword.get(opts, :includes))
+    |> Map.put(:block_envs, Keyword.get(opts, :block_envs, []))
+    |> Map.put(:file, Keyword.get(opts, :file))
   end
 
+  def handle_expr(state, mark, ast) do
+    {ast, state} =
+      Macro.prewalk(ast, state, &handle_directive/2)
+    super(state, mark, ast)
+  end
+
+  #
+  # インクルード処理を行う
+  # ---
+  #
+  # インクルードの形式は以下のとおり
+  #
+  # <% include "template_file.html" %>
+  #
+  defp handle_directive({:include, _, [path]}, %{includes: includes} = state) when is_binary(path) do
+    {do_include(path, includes, %{}, MapSet.new(), state.block_envs), state}
+  end
+  #
+  # <%= include "template_file.html" do %>
+  #    <%= block "header" do %><% end %>
+  # <% end %>
+  #
+  defp handle_directive({:include, _, [path, [do: body]]}, %{includes: includes} = state) when is_binary(path) do
+    #
+    # include body をたどって、block 定義を抽出する
+    #
+    {_node, env} = Macro.prewalk(body, %{block_env: %{}, block_params: %{}, inner_blocks: MapSet.new(), file: state.file}, &make_blockenv/2)
+    {do_include(path, includes, env.block_params, env.inner_blocks, [env.block_env | state.block_envs]), state}
+  end
+  defp handle_directive({:include, [line: line], _args}, state) do
+    raise ExEEx.TemplateError, message: "include parameter should be a string literal: #{state.file}:#{line}"
+  end
   #
   # マクロ定義の処理を行う
   # ---
@@ -164,7 +84,7 @@ defmodule ExEEx.Engine do
   #   BODY
   # <% end %>
   #
-  defp handle_macro({:def, _, [{:@, _, [{name, _, args}]}, [do: body]]}, state) when is_atom(name) do
+  defp handle_directive({:def, _, [{:@, _, [{name, _, args}]}, [do: body]]}, state) when is_atom(name) do
     #
     # argsを引数名をキーとするKeywordリストに変換する
     #
@@ -195,7 +115,7 @@ defmodule ExEEx.Engine do
     #
     # 変数の衝突を避けるためにガードする
     #
-    body = mk_guard(body)
+    body = wrap_guard(body)
     state =
       put_in(state, [:macros, name], {args, arities, body})
     {nil, state}
@@ -204,9 +124,9 @@ defmodule ExEEx.Engine do
   # マクロの展開を行う
   # ---
   #
-  # <%= macro_fun(param1, param2) %>
+  # <%= @macro_fun(param1, param2) %>
   #
-  defp handle_macro({:@, _, [{name, _, params}]}, state) when is_atom(name) and not is_nil(params) do
+  defp handle_directive({:@, [line: line], [{name, _, params}]}, state) when is_atom(name) and not is_nil(params) do
     #
     # マクロ定義の検索
     #
@@ -218,7 +138,7 @@ defmodule ExEEx.Engine do
            # 引数のチェック
            #
            if arity not in arities do
-             raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}"
+             raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{state.file}:#{line}"
            end
            #
            # 渡されたパラメータを引数に束縛して環境を作成する
@@ -239,10 +159,135 @@ defmodule ExEEx.Engine do
            {body, _env} = Macro.prewalk(body, env, &subst_param/2)
            body = Macro.prewalk(body, &EEx.Engine.handle_assign/1)
            {body, state}
-         _ -> raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}"
+         _ -> raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{state.file}:#{line}"
        end
   end
-  defp handle_macro(ast, state), do: {ast, state}
+  defp handle_directive(ast, state), do: {ast, state}
+
+  defp do_include(path, includes, block_params, inner_blocks, block_envs) do
+    adapter = ExEEx.adapter()
+    #
+    # includeするファイルの絶対パスを取得
+    #
+    [{dir, _}| _] = includes
+    file_path =
+      case path do
+        "/" <> _  -> path
+        _ -> Path.join(dir, path)      # 相対パスの場合 dir/name を作成
+      end
+      |> adapter.expand_path()  # 絶対パスに変換
+    {dir, name} = {Path.dirname(file_path), Path.basename(file_path)}
+    if {dir, name} in includes do
+      raise ExEEx.TemplateError, message: "detected cyclic include: #{dir}/#{name}"
+    end
+    #
+    # テンプレートの読み込みとコンパイル
+    #
+    BlockStack.push()
+    {ast, block_names} =
+      adapter.read(file_path)
+      |> EEx.compile_string(file: name, block_envs: block_envs, includes: [{dir, name} | includes], engine: ExEEx.Engine)
+      |> subst_blocks(name, block_envs)
+    BlockStack.add(block_names)
+    BlockStack.add(inner_blocks)
+    BlockStack.merge_and_pop()
+    BlockStack.check(block_params)
+    wrap_guard(ast)
+  end
+
+  #
+  # ブロック構文の解決
+  #
+  def subst_blocks(ast, name, block_envs \\ []) do
+    # include 対象の構文木から block を抽出して初期を環境作成する
+    {_ast, blocks} = Macro.prewalk(ast, %{}, &extract_block/2)
+    {ast, _} = Macro.prewalk(ast, %{file_name: name, blocks: blocks, block_envs: block_envs}, &subst_block/2)
+    {ast, Map.keys(blocks)}
+  end
+
+  #
+  # ブロックの出現を置き換える
+  #
+  defp subst_block({:block, _, [name, [do: body]]}, env) when is_binary(name) do
+    {_, block_env} = Enum.reduce(env.block_envs, {env.blocks, %{}}, &merge_envs/2)
+    {Map.get(block_env, name, body) |> wrap_guard(), env}
+  end
+  defp subst_block({:block, _, [name]}, env) when is_binary(name) do
+    {_, block_env} = Enum.reduce(env.block_envs, {env.blocks, %{}}, &merge_envs/2)
+    {Map.get(block_env, name) |> wrap_guard(), env}
+  end
+  defp subst_block({:block, [line: line], _}, env) do
+    raise ExEEx.TemplateError, message: "block name should be a string literal: #{env.file_name}:#{line}"
+  end
+  defp subst_block({:super, [line: line], _}, env) do
+    raise ExEEx.TemplateError, message: "super directive must be in an include block: #{env.file_name}:#{line}"
+  end
+  defp subst_block(ast, envs), do: {ast, envs}
+
+  #
+  # ブロック環境をマージしていく
+  #
+  defp merge_envs(env, {blocks, sup_env}) do
+    # superを置き換える
+    env =
+      Enum.map(env,
+        fn {name, ast} ->
+          {ast, _} = Macro.prewalk(ast, {name, blocks, sup_env}, &subst_super/2)
+          {name, ast}
+        end
+      )
+      |> Enum.into(%{})
+    {blocks, Map.merge(sup_env, env)}
+  end
+
+  #
+  # superをinclude元のblock本体で置き換え
+  #
+  defp subst_super({:super, _, nil}, {name, blocks, env} = acc) do
+    sup_body =
+      Map.merge(blocks, env)
+      |> Map.get(name)
+      |> wrap_guard()
+    {sup_body, acc}
+  end
+  defp subst_super(ast, acc), do: {ast, acc}
+
+  defp make_blockenv({:block, [line: line] = meta, [name, [do: body]]}, %{block_env: block_env, block_params: block_params, inner_blocks: inner_blocks, file: file}) when is_binary(name) do
+    if Map.has_key?(block_env, name) do
+      raise ExEEx.TemplateError, message: "block \"#{name}\" already exists: #{file}:#{line}"
+    end
+    # body部に入れ子になっているblock定義を抽出する
+    {_ast, inner_env} = Macro.prewalk(body, %{}, &extract_block/2)
+    # body部に出現するblockは無視する
+    new_env = %{
+      block_env: Map.put_new(block_env, name, body),
+      block_params: Map.put_new(block_params, name, %{file: file, line: line}),
+      inner_blocks: MapSet.union(inner_blocks, MapSet.new(Map.keys(inner_env))),
+      file: file
+    }
+    {{:block, meta, [name]}, new_env}
+  end
+  defp make_blockenv({:block, [line: line], [name]} = ast, %{block_env: block_env, block_params: block_params, file: file} = env) when is_binary(name) do
+    if Map.has_key?(block_env, name) do
+      raise ExEEx.TemplateError, message: "block \"#{name}\" already exists: #{file}:#{line}"
+    end
+    new_env = %{env | block_env: Map.put_new(block_env, name, nil), block_params: Map.put_new(block_params, name, %{file: file, line: line})}
+    {ast, new_env}
+  end
+  defp make_blockenv(ast, env), do: {ast, env}
+
+  #
+  # block定義を抽出する
+  # ---
+  #  env: <block_name> -> {<block_body>, <line>}
+  #
+  defp extract_block({:block, _, [name, [do: body]]} = ast, env) when is_binary(name) do
+    {ast, Map.put_new(env, name, body)}
+  end
+  defp extract_block({:block, _, [name]} = ast, env) when is_binary(name) do
+    {ast, Map.put_new(env, name, nil)}
+  end
+  defp extract_block(ast, env), do: {ast, env}
 
   #
   # マクロ本体での変数展開
@@ -276,5 +321,13 @@ defmodule ExEEx.Engine do
     min = Enum.count(args, fn {_k, v} -> v == :mandatory end)
     max = length(args)
     min..max
+  end
+
+  defp wrap_guard(block) do
+    #
+    # 変数の衝突を防ぐために、関数でガードしてローカルスコープにする
+    # (fn -> <BLOCK> end).()
+    #
+    {{:., [], [{:fn, [], [{:->, [], [[], block]}]}]}, [], []}
   end
 end
