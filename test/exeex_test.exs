@@ -72,6 +72,11 @@ Footer overrided by sub3
 """
   end
 
+  test "include template specified by abspath" do
+    abspath = Path.expand("test/templates/body.txt")
+    ExEEx.render_string("<%= include \"#{abspath}\" %>") == "This is body\n"
+  end
+
   test "include block via include template" do
     assert ExEEx.render("test/templates/sub5.txt") == """
 Header from sub5
@@ -111,6 +116,10 @@ This is Block1
 This is Block2
 
 """
+  end
+
+  test "include with empty block body" do
+    assert ExEEx.render_string(~s'<%= include "test/templates/block1.txt" do %><%= block "block1" %><% end %>') == "\n"
   end
 
   test "super directive" do
@@ -160,6 +169,9 @@ This is Block2
   test "block override error" do
     assert_raise ExEEx.TemplateError, fn ->
       ExEEx.compile("test/templates/dup_block_error.txt")
+    end
+    assert_raise ExEEx.TemplateError, fn ->
+      assert ExEEx.render_string(~s'<%= include "test/templates/block1.txt" do %><%= block "block1" %><%= block "block1" %><% end %>')
     end
   end
 
