@@ -37,15 +37,24 @@ defmodule ExEEx.Engine do
   def init(opts) do
     super(opts)
     |> Map.put(:macros, %{})
+    |> Map.put(:namespaces, %{})
     |> Map.put(:includes, Keyword.get(opts, :includes))
     |> Map.put(:block_envs, Keyword.get(opts, :block_envs, []))
     |> Map.put(:file, Keyword.get(opts, :file))
+    |> Map.put(:dir, Keyword.get(opts, :dir))
   end
 
   def handle_expr(state, mark, ast) do
     {ast, state} =
       Macro.prewalk(ast, state, &handle_directive/2)
     super(state, mark, ast)
+  end
+
+  def handle_body(state) do
+    # マクロ定義を保存する
+    macros = Map.get(state, :macros, %{})
+    Process.put(:exeex_macro_defs, macros)
+    super(state)
   end
 
   #
@@ -56,24 +65,41 @@ defmodule ExEEx.Engine do
   #
   # <% include "template_file.html" %>
   #
-  defp handle_directive({:include, _, [path]}, %{includes: includes} = state) when is_binary(path) do
-    {do_include(path, includes, %{}, MapSet.new(), state.block_envs), state}
+  defp handle_directive({:include, _, [path]}, state) when is_binary(path) do
+    {do_include(path, state.dir, state.includes, %{}, MapSet.new(), state.block_envs), state}
   end
   #
   # <%= include "template_file.html" do %>
   #    <%= block "header" do %><% end %>
   # <% end %>
   #
-  defp handle_directive({:include, _, [path, [do: body]]}, %{includes: includes} = state) when is_binary(path) do
+  defp handle_directive({:include, _, [path, [do: body]]}, state) when is_binary(path) do
     #
     # include body をたどって、block 定義を抽出する
     #
     {_node, env} = Macro.prewalk(body, %{block_env: %{}, block_params: %{}, inner_blocks: MapSet.new(), file: state.file}, &make_blockenv/2)
-    {do_include(path, includes, env.block_params, env.inner_blocks, [env.block_env | state.block_envs]), state}
+    {do_include(path, state.dir, state.includes, env.block_params, env.inner_blocks, [env.block_env | state.block_envs]), state}
   end
   defp handle_directive({:include, [line: line], _args}, state) do
     raise ExEEx.TemplateError, message: "include parameter should be a string literal: #{state.file}:#{line}"
   end
+
+  #
+  # マクロ定義ファイルのインポート
+  # ---
+  # <% import "macro_file.txt" %>
+  # <% import "macro_file.txt" as namespace %>
+  #
+  defp handle_directive({:import, _, [path]}, state) when is_binary(path) do
+    {nil, do_import(path, state)}
+  end
+  defp handle_directive({:import, _, [path, [as: {namespace, _, nil}]]}, state) when is_binary(path) and is_atom(namespace) do
+    {nil, do_import(path, namespace, state)}
+  end
+  defp handle_directive({:import, [line: line], _args}, state) do
+    raise ExEEx.TemplateError, message: "invalid macro import: #{state.file}:#{line}"
+  end
+
   #
   # マクロ定義の処理を行う
   # ---
@@ -123,22 +149,34 @@ defmodule ExEEx.Engine do
   #
   # マクロの展開を行う
   # ---
-  #
+  # <%= @namespace.macro_fun(param1, param2) %>
   # <%= @macro_fun(param1, param2) %>
   #
+  defp handle_directive({{:., _, [{:@, [line: line], [{namespace, _, _args}]}, name]}, [line: line], params}, state) do
+    Map.get(state.namespaces, namespace)
+    |> case do
+         nil -> raise ExEEx.TemplateError, message: "undefined namespace: #{namespace}: #{state.file}:#{line}"
+         macros -> {expand_macro(macros, name, params, state.file, line), state}
+       end
+  end
   defp handle_directive({:@, [line: line], [{name, _, params}]}, state) when is_atom(name) and not is_nil(params) do
-    #
-    # マクロ定義の検索
-    #
+    {expand_macro(state.macros, name, params, state.file, line), state}
+  end
+  defp handle_directive(ast, state), do: {ast, state}
+
+  #
+  # マクロ定義の検索
+  #
+  defp expand_macro(macros, name, params, file, line) do
     arity = length(params)
-    Map.get(state.macros, name)
+    Map.get(macros, name)
     |> case do
          {args, arities, body} ->
            #
            # 引数のチェック
            #
            if arity not in arities do
-             raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{state.file}:#{line}"
+             raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}"
            end
            #
            # 渡されたパラメータを引数に束縛して環境を作成する
@@ -157,42 +195,64 @@ defmodule ExEEx.Engine do
            # 束縛環境の元でマクロ本体を展開する
            #
            {body, _env} = Macro.prewalk(body, env, &subst_param/2)
-           body = Macro.prewalk(body, &EEx.Engine.handle_assign/1)
-           {body, state}
-         _ -> raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{state.file}:#{line}"
+           Macro.prewalk(body, &EEx.Engine.handle_assign/1)
+         _ -> raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}"
        end
   end
-  defp handle_directive(ast, state), do: {ast, state}
 
-  defp do_include(path, includes, block_params, inner_blocks, block_envs) do
-    adapter = ExEEx.adapter()
-    #
-    # includeするファイルの絶対パスを取得
-    #
-    [{dir, _}| _] = includes
-    file_path =
-      case path do
-        "/" <> _  -> path
-        _ -> Path.join(dir, path)      # 相対パスの場合 dir/name を作成
-      end
-      |> adapter.expand_path()  # 絶対パスに変換
-    {dir, name} = {Path.dirname(file_path), Path.basename(file_path)}
-    if {dir, name} in includes do
-      raise ExEEx.TemplateError, message: "detected cyclic include: #{dir}/#{name}"
-    end
+  #
+  # マクロファイルのインポート処理
+  #
+  defp do_import(path, namespace \\ nil, state)
+  defp do_import(path, nil, state) do
+    {text, file_path, dir, name} = read_path(path, state.dir, state.includes)
+    EEx.compile_string(text, file: name, dir: dir, includes: [file_path | state.includes], engine: ExEEx.Engine)
+    macros = Process.get(:exeex_macro_defs)
+    %{state | macros: Map.merge(state.macros, macros)}
+  end
+  defp do_import(path, namespace, state) do
+    {text, file_path, dir, name} = read_path(path, state.dir, state.includes)
+    EEx.compile_string(text, file: name, dir: dir, includes: [file_path | state.includes], engine: ExEEx.Engine)
+    macros = Process.get(:exeex_macro_defs)
+    %{state | namespaces: Map.put(state.namespaces, namespace, macros)}
+  end
+
+  #
+  # テンプレートファイルのインクルード処理
+  #
+  defp do_include(path, dir, includes, block_params, inner_blocks, block_envs) do
+    {text, file_path, dir, name} = read_path(path, dir, includes)
     #
     # テンプレートの読み込みとコンパイル
     #
     BlockStack.push()
     {ast, block_names} =
-      adapter.read(file_path)
-      |> EEx.compile_string(file: name, block_envs: block_envs, includes: [{dir, name} | includes], engine: ExEEx.Engine)
+      text
+      |> EEx.compile_string(file: name, dir: dir, block_envs: block_envs, includes: [file_path | includes], engine: ExEEx.Engine)
       |> subst_blocks(name, block_envs)
     BlockStack.add(block_names)
     BlockStack.add(inner_blocks)
     BlockStack.merge_and_pop()
     BlockStack.check(block_params)
     wrap_guard(ast)
+  end
+
+  defp read_path(path, dir, includes) do
+    adapter = ExEEx.adapter()
+    #
+    # includeするファイルの絶対パスを取得
+    #
+    file_path =
+      case path do
+        "/" <> _  -> path
+        _ -> Path.join(dir, path)      # 相対パスの場合 dir/name を作成
+      end
+      |> adapter.expand_path()  # 絶対パスに変換
+    {dir, name} = ExEEx.Utils.split_path(file_path)
+    if file_path in includes do
+      raise ExEEx.TemplateError, message: "detected cyclic include/import: #{file_path}"
+    end
+    {adapter.read(file_path), file_path, dir, name}
   end
 
   #

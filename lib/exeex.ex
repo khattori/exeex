@@ -95,13 +95,14 @@ defmodule ExEEx do
           #
           # ファイルパスが渡されている場合、ディレクトリとベース名に分割
           #
-          {Path.dirname(file_path), Path.basename(file_path)}
+          ExEEx.Utils.split_path(file_path)
       end
     file_name = to_string(name)
     opts =
       opts
       |> Keyword.put(:file, file_name)
-      |> Keyword.put(:includes, [{dir, name}])
+      |> Keyword.put(:dir, dir)
+      |> Keyword.put(:includes, [])
       |> Keyword.put(:engine, ExEEx.Engine)
     ExEEx.Engine.BlockStack.init()
     {code, _} =
