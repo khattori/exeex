@@ -98,3 +98,15 @@ The macro directive defines a macro.
 Using macros:
 
     <%= @input("checkbox", true, true) %>
+
+## Import macros
+
+Import macros:
+
+    <% import "macro_defs.txt" %>
+    <%= @input("check_box", true, true) %>
+
+or import macros into specified namespace.
+
+    <% import "macro_defs.txt", as: view %>
+    <%= @view.input("check_box", true, true) %>

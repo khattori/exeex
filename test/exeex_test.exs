@@ -74,7 +74,7 @@ Footer overrided by sub3
 
   test "include template specified by abspath" do
     abspath = Path.expand("test/templates/body.txt")
-    ExEEx.render_string("<%= include \"#{abspath}\" %>") == "This is body\n"
+    assert ExEEx.render_string("<%= include \"#{abspath}\" %>") == "This is body\n"
   end
 
   test "include block via include template" do
@@ -197,7 +197,7 @@ MACRO2 FOO, BAR
 
   test "duplicate macro definition error" do
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.render_string("<% def @foo do %>BAR<% end %><% def @foo do %>FOO<% end %><%= @foo() %>")
+      ExEEx.render_string("<% def @foo do %>BAR<% end %><% def @foo(x) do %>FOO<% end %><%= @foo() %>")
     end
   end
 
@@ -207,6 +207,35 @@ MACRO2 FOO, BAR
     end
     assert_raise ExEEx.TemplateError, fn ->
       ExEEx.compile_string("<%= @undef_macro() %>")
+    end
+  end
+
+  test "include macros file but do not include macros in the file" do
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.compile_string("<% include \"test/templates/macro.txt\" %><%= @macro_no_args() %>")
+    end
+  end
+
+  test "importing macros file include macros in the file" do
+    assert ExEEx.render_string("<% import \"test/templates/macro.txt\" %><%= @macro_no_args() %>") == "NO ARGS MACRO"
+  end
+
+  test "importing macros file into namespace" do
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.render_string("<% import \"test/templates/macro.txt\", as: utils %><%= @macro_no_args() %>")
+    end
+    assert ExEEx.render_string("<% import \"test/templates/macro.txt\", as: utils %><%= @utils.macro_no_args() %>") == "NO ARGS MACRO"
+  end
+
+  test "invalid macros import error" do
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.render_string("<% import \"test/templates/macro.txt\" do %><% end %>")
+    end
+  end
+
+  test "macros namespace error" do
+    assert_raise ExEEx.TemplateError, fn ->
+      ExEEx.render_string("<%= @unknown.macro() %>")
     end
   end
 end
