@@ -224,7 +224,7 @@ MACRO2 FOO, BAR
     assert_raise ExEEx.TemplateError, fn ->
       ExEEx.render_string("<% import \"test/templates/macro.txt\", as: utils %><%= @macro_no_args() %>")
     end
-    assert ExEEx.render_string("<% import \"test/templates/macro.txt\", as: utils %><%= @utils.macro_no_args() %>") == "NO ARGS MACRO"
+    assert ExEEx.render_string("<% import \"test/templates/macro.txt\", as: utils %><%= utils::@macro_no_args() %>") == "NO ARGS MACRO"
   end
 
   test "invalid macros import error" do
@@ -235,7 +235,7 @@ MACRO2 FOO, BAR
 
   test "macros namespace error" do
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.render_string("<%= @unknown.macro() %>")
+      ExEEx.render_string("<%= unknown::@macro() %>")
     end
   end
 end

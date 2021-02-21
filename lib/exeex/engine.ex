@@ -149,10 +149,10 @@ defmodule ExEEx.Engine do
   #
   # マクロの展開を行う
   # ---
-  # <%= @namespace.macro_fun(param1, param2) %>
+  # <%= namespace::@macro_fun(param1, param2) %>
   # <%= @macro_fun(param1, param2) %>
   #
-  defp handle_directive({{:., _, [{:@, [line: line], [{namespace, _, _args}]}, name]}, [line: line], params}, state) do
+  defp handle_directive({:::, [line: line], [{namespace, _, _args}, {:@, _, [{name, _, params}]}]}, state) do
     Map.get(state.namespaces, namespace)
     |> case do
          nil -> raise ExEEx.TemplateError, message: "undefined namespace: #{namespace}: #{state.file}:#{line}"

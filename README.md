@@ -109,4 +109,4 @@ Import macros:
 or import macros into specified namespace.
 
     <% import "macro_defs.txt", as: view %>
-    <%= @view.input("check_box", true, true) %>
+    <%= view::@input("check_box", true, true) %>
