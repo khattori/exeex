@@ -2,8 +2,9 @@ defmodule ExEEx do
   @moduledoc """
   Documentation for ExEEx.
   """
-  @adapter Application.get_env(:exeex, :adapter, ExEEx.Adapter.FileStorage)
-  def adapter(), do: @adapter
+  def adapter() do
+    Application.get_env(:exeex, :adapter, ExEEx.Adapter.FileStorage)
+  end
 
   @doc """
   Render template file.
@@ -68,8 +69,8 @@ defmodule ExEEx do
       "hello.txt"
   """
   def compile(filename, opts \\ []) when is_binary(filename) do
-    file_path = @adapter.expand_path(filename)
-    @adapter.read(file_path)
+    file_path = adapter().expand_path(filename)
+    adapter().read(file_path)
     |> compile_string(Keyword.put(opts, :file, file_path))
   end
 
@@ -87,11 +88,11 @@ defmodule ExEEx do
         #
         # インメモリの場合、現在のディレクトリ
         #
-        {@adapter.expand_path("."), :nofile}
+        {adapter().expand_path("."), :nofile}
       else
         file ->
           # 絶対パスに変換
-          file_path = @adapter.expand_path(file)
+          file_path = adapter().expand_path(file)
           #
           # ファイルパスが渡されている場合、ディレクトリとベース名に分割
           #
