@@ -1,4 +1,4 @@
 <%= include "sub4.txt" do %>
-<% block "header" do %>Header from sub5
+<%= block "header" do %>Header from sub5
 <% end %>
 <% end %>

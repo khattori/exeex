@@ -1,5 +1,5 @@
 defmodule ExEEx.Engine do
-  use EEx.Engine
+  @behaviour EEx.Engine
 
   defmodule BlockStack do
     @key :exeex_block_stack
@@ -33,9 +33,9 @@ defmodule ExEEx.Engine do
     end
   end
 
-
+  @impl true
   def init(opts) do
-    super(opts)
+    EEx.Engine.init(opts)
     |> Map.put(:macros, %{})
     |> Map.put(:namespaces, %{})
     |> Map.put(:includes, Keyword.get(opts, :includes))
@@ -44,18 +44,29 @@ defmodule ExEEx.Engine do
     |> Map.put(:dir, Keyword.get(opts, :dir))
   end
 
+  @impl true
   def handle_expr(state, mark, ast) do
     {ast, state} =
       Macro.prewalk(ast, state, &handle_directive/2)
-    super(state, mark, ast)
+    EEx.Engine.handle_expr(state, mark, ast)
   end
 
+  @impl true
   def handle_body(state) do
     # マクロ定義を保存する
     macros = Map.get(state, :macros, %{})
     Process.put(:exeex_macro_defs, macros)
-    super(state)
+    EEx.Engine.handle_body(state)
   end
+
+  @impl true
+  defdelegate handle_begin(state), to: EEx.Engine
+
+  @impl true
+  defdelegate handle_end(state), to: EEx.Engine
+
+  @impl true
+  defdelegate handle_text(state, meta, text), to: EEx.Engine
 
   #
   # インクルード処理を行う

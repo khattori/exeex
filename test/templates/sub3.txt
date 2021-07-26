@@ -1,12 +1,12 @@
 <%= include "main.txt" do %>
-<% block "header" do %>Header overrided by sub3
+<%= block "header" do %>Header overrided by sub3
 <% end %>
 <% end %>
 <%= include "main.txt" do %>
-<% block "body" do %>Body overrided by sub3
+<%= block "body" do %>Body overrided by sub3
 <% end %>
 <% end %>
 <%= include "main.txt" do %>
-<% block "footer" do %>Footer overrided by sub3
+<%= block "footer" do %>Footer overrided by sub3
 <% end %>
 <% end %>
