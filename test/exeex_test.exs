@@ -103,14 +103,14 @@ Footer overrided by subsub
   end
 
   test "included template has same block" do
-    assert ExEEx.render_string("<%= include \"test/templates/same_block.txt\" do %><% block \"test\" do %>This is overrided block<% end %><% end %>") == """
+    assert ExEEx.render_string("<%= include \"test/templates/same_block.txt\" do %><%= block \"test\" do %>This is overrided block<% end %><% end %>") == """
 This is overrided block
 This is overrided block
 """
   end
 
   test "mix include template" do
-    assert ExEEx.render_string("<%= include \"test/templates/mix.txt\" do %><% block \"block2\" do %>This is Block2<% end %><% block \"block1\" do %>This is Block1<% end %><% end %>") == """
+    assert ExEEx.render_string("<%= include \"test/templates/mix.txt\" do %><%= block \"block2\" do %>This is Block2<% end %><%= block \"block1\" do %>This is Block1<% end %><% end %>") == """
 This is Block1
 
 This is Block2
@@ -134,7 +134,7 @@ This is Block2
 
   test "undefined block error" do
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.compile_string("<%= include \"test/templates/main.txt\" do %><% block \"undefined\" do %>undefined<% end %><% end %>")
+      ExEEx.compile_string("<%= include \"test/templates/main.txt\" do %><%= block \"undefined\" do %>undefined<% end %><% end %>")
     end
   end
 
@@ -146,17 +146,17 @@ This is Block2
       ExEEx.compile("test/templates/cyclic_error1.txt")
     end
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.compile_string("<% include \"test/templates/cyclic_error2.txt\" %>")
+      ExEEx.compile_string("<%= include \"test/templates/cyclic_error2.txt\" %>")
     end
 
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.compile_string("<% include \"test/templates/cyclic_error.txt\" %>")
+      ExEEx.compile_string("<%= include \"test/templates/cyclic_error.txt\" %>")
     end
   end
 
   test "invalid include type" do
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.compile_string("<% include x %>")
+      ExEEx.compile_string("<%= include x %>")
     end
   end
 
@@ -191,13 +191,13 @@ MACRO2 FOO, BAR
 
   test "macro arg error" do
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.compile_string("<% def @macro(arg, arg) do %><% end %>")
+      ExEEx.compile_string("<%= def @macro(arg, arg) do %><% end %>")
     end
   end
 
   test "duplicate macro definition error" do
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.render_string("<% def @foo do %>BAR<% end %><% def @foo(x) do %>FOO<% end %><%= @foo() %>")
+      ExEEx.render_string("<%= def @foo do %>BAR<% end %><%= def @foo(x) do %>FOO<% end %><%= @foo() %>")
     end
   end
 
@@ -229,7 +229,7 @@ MACRO2 FOO, BAR
 
   test "invalid macros import error" do
     assert_raise ExEEx.TemplateError, fn ->
-      ExEEx.render_string("<% import \"test/templates/macro.txt\" do %><% end %>")
+      ExEEx.render_string("<%= import \"test/templates/macro.txt\" do %><% end %>")
     end
   end
 

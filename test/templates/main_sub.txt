@@ -1,5 +1,5 @@
 <%= include "main.txt" do %>
-<% block "header" do %>Header overrided by main_sub
+<%= block "header" do %>Header overrided by main_sub
 <% end %>
 <%= block "body" do %>Body overrided by main_sub
 <%= block "body_sub" do %>Sub body in body@main_sub.txt<% end %>

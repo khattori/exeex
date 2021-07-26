@@ -1,4 +1,4 @@
 <%= include "main.txt" do %>
-<% block "header" do %>Header overrided by sub
+<%= block "header" do %>Header overrided by sub
 <% end %>
 <% end %>

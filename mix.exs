@@ -5,7 +5,7 @@ defmodule ExEEx.MixProject do
     [
       app: :exeex,
       version: "0.1.0",
-      elixir: "~> 1.11.3",
+      elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       test_coverage: [tool: ExCoveralls]

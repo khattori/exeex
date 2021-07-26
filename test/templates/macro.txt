@@ -1,7 +1,7 @@
-<% def @macro_no_args do %>NO ARGS MACRO<% end %>
-<% def @macro_no_args2() do %>NO ARGS MACRO2<% end %>
-<% def @macro_args(arg) do %>MACRO(<%= @ext_var %>) <%= @arg %>, <%= @arg %><% end %>
-<% def @macro_args2(arg1, arg2 \\ "DEFAULT") do %>MACRO2 <%= @arg1 %>, <%= @arg2 %><% end %>
+<%= def @macro_no_args do %>NO ARGS MACRO<% end %>
+<%= def @macro_no_args2() do %>NO ARGS MACRO2<% end %>
+<%= def @macro_args(arg) do %>MACRO(<%= @ext_var %>) <%= @arg %>, <%= @arg %><% end %>
+<%= def @macro_args2(arg1, arg2 \\ "DEFAULT") do %>MACRO2 <%= @arg1 %>, <%= @arg2 %><% end %>
 <%= @macro_no_args() %>
 <%= @macro_no_args2() %>
 <%= @macro_args("ARG") %>
