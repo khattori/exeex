@@ -195,6 +195,17 @@ MACRO2 FOO, BAR
     end
   end
 
+  test "macro call from macro" do
+    assert ExEEx.render("test/templates/macro2.txt", assigns: [ext_var: "EXT"]) == """
+
+
+
+FROM MACRO
+MACRO(EXT) CALL, CALL
+
+"""
+  end
+
   test "duplicate macro definition error" do
     assert_raise ExEEx.TemplateError, fn ->
       ExEEx.render_string("<%= def @foo do %>BAR<% end %><%= def @foo(x) do %>FOO<% end %><%= @foo() %>")

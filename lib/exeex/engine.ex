@@ -180,35 +180,35 @@ defmodule ExEEx.Engine do
   #
   defp expand_macro(macros, name, params, file, line) do
     arity = length(params)
-    Map.get(macros, name)
-    |> case do
-         {args, arities, body} ->
-           #
-           # 引数のチェック
-           #
-           if arity not in arities do
-             raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}"
-           end
-           #
-           # 渡されたパラメータを引数に束縛して環境を作成する
-           #
-           {env, _} =
-             Enum.map_reduce(
-               args,
-               %{params: params, extra: arity - arities.first},
-               fn
-                 {arg_name, :mandatory}, %{params: [param | rest_params], extra: extra} -> {{arg_name, param}, %{params: rest_params, extra: extra}}
-                 {arg_name, {:optional, default}}, %{params: params, extra: 0} -> {{arg_name, default}, %{params: params, extra: 0}}
-                 {arg_name, {:optional, _default}}, %{params: [param | rest_params], extra: extra} -> {{arg_name, param}, %{params: rest_params, extra: extra - 1}}
-               end
-             )
-           #
-           # 束縛環境の元でマクロ本体を展開する
-           #
-           {body, _env} = Macro.prewalk(body, env, &subst_param/2)
-           Macro.prewalk(body, &EEx.Engine.handle_assign/1)
-         _ -> raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}"
-       end
+    case Map.get(macros, name) do
+      {args, arities, body} ->
+        #
+        # 引数のチェック
+        #
+        if arity not in arities do
+          raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}"
+        end
+        #
+        # 渡されたパラメータを引数に束縛して環境を作成する
+        #
+        {env, _} =
+          Enum.map_reduce(
+            args,
+            %{params: params, extra: arity - arities.first},
+            fn
+              {arg_name, :mandatory}, %{params: [param | rest_params], extra: extra} -> {{arg_name, param}, %{params: rest_params, extra: extra}}
+              {arg_name, {:optional, default}}, %{params: params, extra: 0} -> {{arg_name, default}, %{params: params, extra: 0}}
+              {arg_name, {:optional, _default}}, %{params: [param | rest_params], extra: extra} -> {{arg_name, param}, %{params: rest_params, extra: extra - 1}}
+            end
+          )
+        #
+        # 束縛環境の元でマクロ本体を展開する
+        #
+        {body, _env} = Macro.prewalk(body, env, &subst_param/2)
+        body
+      _ ->
+        raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}"
+    end
   end
 
   #
@@ -370,11 +370,10 @@ defmodule ExEEx.Engine do
   #
   defp subst_param({:@, _, [{name, _, atom}]} = ast, env) when is_atom(name) and is_atom(atom) do
     ast =
-      Keyword.get(env, name)
-      |> case do
-           nil -> EEx.Engine.handle_assign(ast)
-           param -> param
-         end
+      case Keyword.get(env, name) do
+        nil -> EEx.Engine.handle_assign(ast)
+        param -> param
+      end
     {ast, env}
   end
   defp subst_param(ast, env), do: {ast, env}

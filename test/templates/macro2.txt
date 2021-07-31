@@ -1,0 +1,6 @@
+<% import "macro.txt", as: macro %>
+<%= def @call(param) do %>
+FROM MACRO
+<%= macro::@macro_args(@param) %>
+<% end %>
+<%= @call("CALL") %>
