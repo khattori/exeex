@@ -53,7 +53,7 @@ defmodule ExEEx do
       ""
 
       iex> ExEEx.render_string("<%= block invalid %>")
-      ** (ExEEx.TemplateError) block name should be a string literal: nofile:1
+      ** (ExEEx.TemplateError) block name should be a string literal: nofile:1.5
   """
   def render_string(template, params \\ []) when is_list(params) do
     compile_string(template)

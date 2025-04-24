@@ -25,9 +25,9 @@ defmodule ExEEx.Engine do
 
     def check(block_params) do
       [head | _tail] = Process.get(@key)
-      for {name, %{file: file, line: line}} <- block_params do
+      for {name, %{file: file, line: line, column: column}} <- block_params do
         if not MapSet.member?(head, name) do
-          raise ExEEx.TemplateError, message: "undefined block name: #{name}: #{file}:#{line}"
+          raise ExEEx.TemplateError, message: "undefined block name: #{name}: #{file}:#{line}.#{column}"
         end
       end
     end
@@ -91,8 +91,8 @@ defmodule ExEEx.Engine do
     {_node, env} = Macro.prewalk(body, %{block_env: %{}, block_params: %{}, inner_blocks: MapSet.new(), file: state.file}, &make_blockenv/2)
     {do_include(path, state.dir, state.includes, env.block_params, env.inner_blocks, [env.block_env | state.block_envs]), state}
   end
-  defp handle_directive({:include, [line: line], _args}, state) do
-    raise ExEEx.TemplateError, message: "include parameter should be a string literal: #{state.file}:#{line}"
+  defp handle_directive({:include, [line: line, column: column], _args}, state) do
+    raise ExEEx.TemplateError, message: "include parameter should be a string literal: #{state.file}:#{line}.#{column}"
   end
 
   #
@@ -107,8 +107,8 @@ defmodule ExEEx.Engine do
   defp handle_directive({:import, _, [path, [as: {namespace, _, nil}]]}, state) when is_binary(path) and is_atom(namespace) do
     {nil, do_import(path, namespace, state)}
   end
-  defp handle_directive({:import, [line: line], _args}, state) do
-    raise ExEEx.TemplateError, message: "invalid macro import: #{state.file}:#{line}"
+  defp handle_directive({:import, [line: line, column: column], _args}, state) do
+    raise ExEEx.TemplateError, message: "invalid macro import: #{state.file}:#{line}.#{column}"
   end
 
   #
@@ -163,22 +163,22 @@ defmodule ExEEx.Engine do
   # <%= namespace::@macro_fun(param1, param2) %>
   # <%= @macro_fun(param1, param2) %>
   #
-  defp handle_directive({:"::", [line: line], [{namespace, _, _args}, {:@, _, [{name, _, params}]}]}, state) do
+  defp handle_directive({:"::", [line: line, column: column], [{namespace, _, _args}, {:@, _, [{name, _, params}]}]}, state) do
     Map.get(state.namespaces, namespace)
     |> case do
-         nil -> raise ExEEx.TemplateError, message: "undefined namespace: #{namespace}: #{state.file}:#{line}"
-         macros -> {expand_macro(macros, name, params, state.file, line), state}
+         nil -> raise ExEEx.TemplateError, message: "undefined namespace: #{namespace}: #{state.file}:#{line}.#{column}"
+         macros -> {expand_macro(macros, name, params, state.file, line, column), state}
        end
   end
-  defp handle_directive({:@, [line: line], [{name, _, params}]}, state) when is_atom(name) and not is_nil(params) do
-    {expand_macro(state.macros, name, params, state.file, line), state}
+  defp handle_directive({:@, [line: line, column: column], [{name, _, params}]}, state) when is_atom(name) and not is_nil(params) do
+    {expand_macro(state.macros, name, params, state.file, line, column), state}
   end
   defp handle_directive(ast, state), do: {ast, state}
 
   #
   # マクロ定義の検索
   #
-  defp expand_macro(macros, name, params, file, line) do
+  defp expand_macro(macros, name, params, file, line, column) do
     arity = length(params)
     case Map.get(macros, name) do
       {args, arities, body} ->
@@ -186,7 +186,7 @@ defmodule ExEEx.Engine do
         # 引数のチェック
         #
         if arity not in arities do
-          raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}"
+          raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}.#{column}"
         end
         #
         # 渡されたパラメータを引数に束縛して環境を作成する
@@ -207,7 +207,7 @@ defmodule ExEEx.Engine do
         {body, _env} = Macro.prewalk(body, env, &subst_param/2)
         body
       _ ->
-        raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}"
+        raise ExEEx.TemplateError, message: "undefined macro: #{name}/#{arity}: #{file}:#{line}.#{column}"
     end
   end
 
@@ -287,11 +287,11 @@ defmodule ExEEx.Engine do
     {_, block_env} = Enum.reduce(env.block_envs, {env.blocks, %{}}, &merge_envs/2)
     {Map.get(block_env, name) |> wrap_guard(), env}
   end
-  defp subst_block({:block, [line: line], _}, env) do
-    raise ExEEx.TemplateError, message: "block name should be a string literal: #{env.file_name}:#{line}"
+  defp subst_block({:block, [line: line, column: column], _}, env) do
+    raise ExEEx.TemplateError, message: "block name should be a string literal: #{env.file_name}:#{line}.#{column}"
   end
-  defp subst_block({:super, [line: line], _}, env) do
-    raise ExEEx.TemplateError, message: "super directive must be in an include block: #{env.file_name}:#{line}"
+  defp subst_block({:super, [line: line, column: column], _}, env) do
+    raise ExEEx.TemplateError, message: "super directive must be in an include block: #{env.file_name}:#{line}.#{column}"
   end
   defp subst_block(ast, envs), do: {ast, envs}
 
@@ -323,26 +323,26 @@ defmodule ExEEx.Engine do
   end
   defp subst_super(ast, acc), do: {ast, acc}
 
-  defp make_blockenv({:block, [line: line] = meta, [name, [do: body]]}, %{block_env: block_env, block_params: block_params, inner_blocks: inner_blocks, file: file}) when is_binary(name) do
+  defp make_blockenv({:block, [line: line, column: column] = meta, [name, [do: body]]}, %{block_env: block_env, block_params: block_params, inner_blocks: inner_blocks, file: file}) when is_binary(name) do
     if Map.has_key?(block_env, name) do
-      raise ExEEx.TemplateError, message: "block \"#{name}\" already exists: #{file}:#{line}"
+      raise ExEEx.TemplateError, message: "block \"#{name}\" already exists: #{file}:#{line}.#{column}"
     end
     # body部に入れ子になっているblock定義を抽出する
     {_ast, inner_env} = Macro.prewalk(body, %{}, &extract_block/2)
     # body部に出現するblockは無視する
     new_env = %{
       block_env: Map.put_new(block_env, name, body),
-      block_params: Map.put_new(block_params, name, %{file: file, line: line}),
+      block_params: Map.put_new(block_params, name, %{file: file, line: line, column: column}),
       inner_blocks: MapSet.union(inner_blocks, MapSet.new(Map.keys(inner_env))),
       file: file
     }
     {{:block, meta, [name]}, new_env}
   end
-  defp make_blockenv({:block, [line: line], [name]} = ast, %{block_env: block_env, block_params: block_params, file: file} = env) when is_binary(name) do
+  defp make_blockenv({:block, [line: line, column: column], [name]} = ast, %{block_env: block_env, block_params: block_params, file: file} = env) when is_binary(name) do
     if Map.has_key?(block_env, name) do
-      raise ExEEx.TemplateError, message: "block \"#{name}\" already exists: #{file}:#{line}"
+      raise ExEEx.TemplateError, message: "block \"#{name}\" already exists: #{file}:#{line}.#{column}"
     end
-    new_env = %{env | block_env: Map.put_new(block_env, name, nil), block_params: Map.put_new(block_params, name, %{file: file, line: line})}
+    new_env = %{env | block_env: Map.put_new(block_env, name, nil), block_params: Map.put_new(block_params, name, %{file: file, line: line, column: column})}
     {ast, new_env}
   end
   defp make_blockenv(ast, env), do: {ast, env}
